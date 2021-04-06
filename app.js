@@ -4,7 +4,8 @@ const express = require("express");
 const mongoose = require("mongoose");
 const ejs = require("ejs");
 const bodyParser = require("body-parser");
-const encrypt = require("mongoose-encryption");
+const bcrypt = require("bcrypt");
+const saltRounds = 12;
 
 const app = express();
 
@@ -13,15 +14,13 @@ app.use(express.static("public"));
 app.set("view engine", "ejs");
 
 // Database (MongoDB Atlas) url
-const urlDB = "mongodb+srv://vishu:Ican@seeyou27@cluster0.ytsqe.mongodb.net/secretsDB";
+const urlDB = "mongodb+srv://"+process.env.MONGO_USER+":"+process.env.MONGO_PASS+"@cluster0.ytsqe.mongodb.net/secretsDB";
 mongoose.connect(urlDB, {useNewUrlParser: true, useUnifiedTopology: true });
 
 const userSchema = new mongoose.Schema({
     email: String,
     password: String
 });
-
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] });
 
 const User = mongoose.model("User", userSchema);
 
@@ -41,15 +40,21 @@ app.route("/login")
 
         User.findOne({email: user}, (err, found)=>{
             if(!err){
-                if(found.password !== pass){
+                if(found){
+                    bcrypt.compare(pass, found.password, function(err, result) {
+                        if(result === true){
+                            console.log("Successful login.");
+                            res.redirect("/secrets");
+                        }
+                    });
+                } else {
                     console.log("Wrong Credentials");
                     res.redirect("/login");
-                } else {
-                    console.log("Successful login.");
-                    res.redirect("/secrets");
                 }
             }
         });
+
+        
     });
 
 app.route("/register")
@@ -59,27 +64,33 @@ app.route("/register")
     .post((req, res)=>{
         const user = req.body.username;
         const pass = req.body.password;
-        const item = new User({
-            email: user,
-            password: pass
-        });
-
-        User.findOne({email: user}, (err, found)=>{
-            if(!err){
-                if(!found){
-                    item.save(err=>{
-                        if(err) console.log(err);
-                        else{
-                            console.log("Successfully Registered");
-                            res.render("secrets");
-                        }
-                    });
-                } else {
-                    console.log("Username already in use.");
-                    res.redirect("/register");
+        bcrypt.hash(pass, saltRounds, function(err, hash) {
+            
+            const item = new User({
+                email: user,
+                password: hash
+            });
+    
+            User.findOne({email: user}, (err, found)=>{
+                if(!err){
+                    if(!found){
+                        item.save(err=>{
+                            if(err) console.log(err);
+                            else{
+                                console.log("Successfully Registered");
+                                res.render("secrets");
+                            }
+                        });
+                    } else {
+                        console.log("Username already in use.");
+                        res.redirect("/register");
+                    }
                 }
-            }
+            });
+
         });
+        
+        
 
     });
 
